@@ -45,7 +45,7 @@ module NestThermostat
       request = HTTParty.get("#{self.transport_url}/v2/mobile/user.#{self.user_id}", headers: self.headers) rescue nil
       result = JSON.parse(request.body) rescue nil
 
-      self.structure_id = result['user'][user_id]['structures'][0].split('.')[1]
+      self.structure_id = result['user'][user_id]['structures'][1].split('.')[1]
       self.device_id    = result['structure'][structure_id]['devices'][0].split('.')[1]
 
       result
