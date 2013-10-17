@@ -8,7 +8,7 @@ module NestThermostat
     attr_accessor :email, :password, :login_url, :user_agent, :auth,
       :temperature_scale, :login, :token, :user_id, :transport_url,
       :transport_host, :structure_id, :device_id, :headers, :thermostat_idx,
-      :num_thermostats, :status_json
+      :num_thermostats, :status_json, :outdoor_temp_url, :outdoor_temp
 
     def initialize(config = {})
       raise 'Please specify your nest email'    unless config[:email]
@@ -25,10 +25,11 @@ module NestThermostat
 
       # Login and get token, user_id and URLs
       perform_login
-      self.token          = @auth["access_token"]
-      self.user_id        = @auth["userid"]
-      self.transport_url  = @auth["urls"]["transport_url"]
-      self.transport_host = URI.parse(self.transport_url).host
+      self.token            = @auth["access_token"]
+      self.user_id          = @auth["userid"]
+      self.transport_url    = @auth["urls"]["transport_url"]
+      self.transport_host   = URI.parse(self.transport_url).host
+      self.outdoor_temp_url = @auth["urls"]["weather_url"]
       self.headers = {
         'Host'                  => self.transport_host,
         'User-Agent'            => self.user_agent,
@@ -55,13 +56,19 @@ module NestThermostat
       request = HTTParty.get("#{self.transport_url}/v2/mobile/user.#{self.user_id}", headers: self.headers) rescue nil
       result = JSON.parse(request.body) rescue nil
 
-      self.structure_id = result['user'][user_id]['structures'][0].split('.')[1]
-      self.num_thermostats = result['structure'][structure_id]['num_thermostats'].to_i
-      raise 'Thermostat index out of range' unless self.thermostat_idx < self.num_thermostats
-      self.device_id    = result['structure'][structure_id]['devices'][self.thermostat_idx].split('.')[1]
+      begin
+        self.structure_id = result['user'][user_id]['structures'][0].split('.')[1]
+        self.num_thermostats = result['structure'][structure_id]['devices'].count
+        raise 'Thermostat index out of range' unless self.thermostat_idx < self.num_thermostats
+        self.device_id    = result['structure'][structure_id]['devices'][self.thermostat_idx].split('.')[1]
 
-      self.status_json = result
-      result
+        self.status_json = result
+        result
+      rescue
+        # wait a minute, try again
+        sleep 60
+        update_status
+      end
     end
     alias_method :reload_status, :update_status
 
@@ -136,7 +143,6 @@ module NestThermostat
         body: %Q({"target_change_pending":true,"target_temperature":#{degrees}}),
         headers: self.headers
       ) rescue nil
-      update_status
     end
     alias_method :temp=, :target_temperature=
     alias_method :temperature=, :target_temperature=
@@ -159,7 +165,6 @@ module NestThermostat
         body: %Q({"away_timestamp":#{Time.now.to_i},"away":#{!!state},"away_setter":0}),
         headers: self.headers
       ) rescue nil
-      update_status
     end
 
     def temp_scale=(scale)
@@ -172,11 +177,34 @@ module NestThermostat
     
     def fan_mode=(state)
       HTTParty.post(
-	"#{self.transport_url}/v2/put/device.#{self.device_id}",
-	body: %Q({"fan_mode":"#{state}"}),
-	headers: self.headers
+      	"#{self.transport_url}/v2/put/device.#{self.device_id}",
+      	body: %Q({"fan_mode":"#{state}"}),
+      	headers: self.headers
       ) rescue nil
     end
+
+    def target_temperature_type
+      status["shared"][self.device_id]["target_temperature_type"]
+    end
+
+    def target_temperature_type=(hvac_mode)
+      HTTParty.post(
+        "#{self.transport_url}/v2/put/shared.#{self.device_id}",
+        body: %Q({"target_temperature_type":"#{hvac_mode}"}),
+        headers: self.headers
+      ) rescue nil
+    end
+
+    def postal_code
+      status['device'][self.device_id]['postal_code']
+    end
+
+    def current_outdoor_temp
+      odrequest = HTTParty.get("#{self.outdoor_temp_url}#{self.postal_code}")
+      odresult = JSON.parse(odrequest.body) rescue nil
+      convert_temp_for_get(self.outdoor_temp = odresult[self.postal_code]['current']['temp_c'])
+    end
+    alias_method :outdoor_temp, :current_outdoor_temp
 
     private
     def perform_login
