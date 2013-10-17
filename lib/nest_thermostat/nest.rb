@@ -56,11 +56,16 @@ module NestThermostat
       request = HTTParty.get("#{self.transport_url}/v2/mobile/user.#{self.user_id}", headers: self.headers) rescue nil
       result = JSON.parse(request.body) rescue nil
 
+<<<<<<< HEAD
       begin
         self.structure_id = result['user'][user_id]['structures'][0].split('.')[1]
         self.num_thermostats = result['structure'][structure_id]['devices'].count
         raise 'Thermostat index out of range' unless self.thermostat_idx < self.num_thermostats
         self.device_id    = result['structure'][structure_id]['devices'][self.thermostat_idx].split('.')[1]
+=======
+      self.structure_id = result['user'][user_id]['structures'][0].split('.')[1]
+      self.device_id    = result['structure'][structure_id]['devices'][1].split('.')[1]
+>>>>>>> 53c5161ec087268ffacf4896f48de68191b313ba
 
         self.status_json = result
         result
@@ -174,6 +179,7 @@ module NestThermostat
     def fan_mode
       status["device"][self.device_id]["fan_mode"]
     end
+<<<<<<< HEAD
     
     def fan_mode=(state)
       HTTParty.post(
@@ -191,10 +197,18 @@ module NestThermostat
       HTTParty.post(
         "#{self.transport_url}/v2/put/shared.#{self.device_id}",
         body: %Q({"target_temperature_type":"#{hvac_mode}"}),
+=======
+
+    def fan_mode=(state)
+      HTTParty.post(
+        "#{self.transport_url}/v2/put/device.#{self.device_id}",
+        body: %Q({"fan_mode":"#{state}"}),
+>>>>>>> 53c5161ec087268ffacf4896f48de68191b313ba
         headers: self.headers
       ) rescue nil
     end
 
+<<<<<<< HEAD
     def postal_code
       status['device'][self.device_id]['postal_code']
     end
@@ -206,6 +220,8 @@ module NestThermostat
     end
     alias_method :outdoor_temp, :current_outdoor_temp
 
+=======
+>>>>>>> 53c5161ec087268ffacf4896f48de68191b313ba
     private
     def perform_login
       login_request = HTTParty.post(
